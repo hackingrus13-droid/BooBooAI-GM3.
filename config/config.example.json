@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "identity": {"name": "BooBooAI-GM", "title": "Autonomous Research & Development Intelligence Platform"},
+  "schema_version": 3,
+  "identity": {"name": "BooBooAI-GM", "title": "Autonomous Research & Development Intelligence Platform", "architect_title": "BooBooAI-GM Project Architect"},
   "privacy": {
     "local_inference": true,
     "local_memory": true,
@@ -9,11 +9,11 @@
     "local_voice": true,
     "local_tools": true,
     "internet_access": true,
-    "cloud_ai": false,
-    "cloud_storage": false,
+    "cloud_ai": true,
+    "cloud_storage": true,
     "remote_telemetry": false,
     "external_analytics": false,
-    "third_party_models": false,
+    "third_party_models": true,
     "network_mode": "ADMIN_CONTROLLED"
   },
   "permissions": {
