@@ -1,0 +1,4 @@
+{
+  "NOTE": "Copy this file to private_rules.local.json on your own machine. Keep private rules local. Do not commit the populated file.",
+  "rules": []
+}
