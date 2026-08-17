@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 """BooBooAI-GM3 local orchestration server.
 
-Standard-library-only HTTP server that:
-- serves the existing static UI;
-- exposes /v1/info;
-- exposes the frontend-compatible /v1/ultraplinian/completions SSE endpoint;
-- fans one request out to configured OpenAI-compatible local model servers;
-- scores successful candidates deterministically and returns the winner.
+Standard-library-only HTTP server that serves the existing UI and exposes the
+frontend-compatible ULTRAPLINIAN orchestration endpoint. It fans requests out
+to configured OpenAI-compatible local model servers, scores candidates with a
+transparent baseline heuristic, and returns the winner over SSE.
 
-Model endpoints are configured with MODEL_ENDPOINTS, for example:
-MODEL_ENDPOINTS='fast=http://127.0.0.1:8080/v1;smart=http://127.0.0.1:8081/v1'
-
-A single llama.cpp server is enough to get started. Additional independent
-endpoints can be added later without changing the frontend.
+MODEL_ENDPOINTS example:
+  local=http://127.0.0.1:8081/v1;second=http://127.0.0.1:8082/v1
 """
-
 from __future__ import annotations
 
 import json
@@ -33,15 +27,14 @@ ROOT = Path(__file__).resolve().parent
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8080"))
 REQUEST_TIMEOUT = float(os.getenv("MODEL_TIMEOUT", "120"))
-DEFAULT_TIER_LIMITS = {"fast": 12, "standard": 20, "full": 27}
+TIER_LIMITS = {"fast": 12, "standard": 20, "full": 27}
 
 
 def parse_endpoints() -> list[dict[str, str]]:
-    raw = os.getenv("MODEL_ENDPOINTS", "local=http://127.0.0.1:8080/v1")
+    raw = os.getenv("MODEL_ENDPOINTS", "local=http://127.0.0.1:8081/v1")
     result: list[dict[str, str]] = []
     for item in raw.split(";"):
-        item = item.strip()
-        if not item or "=" not in item:
+        if "=" not in item:
             continue
         name, url = item.split("=", 1)
         name, url = name.strip(), url.strip().rstrip("/")
@@ -58,7 +51,7 @@ def json_bytes(obj: Any) -> bytes:
 
 
 def sse(event: str, payload: dict[str, Any]) -> bytes:
-    return f"event: {event}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n".encode("utf-8")
+    return f"event: {event}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()
 
 
 def safe_name(value: str) -> str:
@@ -66,19 +59,13 @@ def safe_name(value: str) -> str:
 
 
 def candidate_score(text: str, latency_ms: float) -> float:
-    """Deterministic baseline quality heuristic, not a claim of intelligence.
-
-    The score rewards useful structure and sufficient content while applying a
-    small latency penalty. It intentionally avoids pretending to be a semantic
-    judge. A future judge model can be plugged in without changing the API.
-    """
-    stripped = text.strip()
-    if not stripped:
+    """Transparent baseline score; it is not a semantic-quality claim."""
+    text = text.strip()
+    if not text:
         return 0.0
-    length = len(stripped)
-    sentence_bonus = min(stripped.count(".") + stripped.count("?") + stripped.count("!"), 12) * 1.5
-    structure_bonus = min(stripped.count("\n") + stripped.count("- "), 8) * 1.0
-    length_score = min(length / 120.0, 30.0)
+    length_score = min(len(text) / 120.0, 30.0)
+    sentence_bonus = min(sum(text.count(x) for x in ".?!"), 12) * 1.5
+    structure_bonus = min(text.count("\n") + text.count("- "), 8)
     latency_penalty = min(latency_ms / 5000.0, 12.0)
     return round(max(0.0, 50.0 + length_score + sentence_bonus + structure_bonus - latency_penalty), 2)
 
@@ -91,49 +78,35 @@ def extract_text(data: dict[str, Any]) -> str:
     message = choice.get("message") or {}
     if isinstance(message.get("content"), str):
         return message["content"]
-    if isinstance(choice.get("text"), str):
-        return choice["text"]
-    return ""
+    return choice.get("text", "") if isinstance(choice.get("text"), str) else ""
 
 
 def call_model(endpoint: dict[str, str], messages: list[dict[str, str]]) -> dict[str, Any]:
-    url = endpoint["url"] + "/chat/completions"
-    body = {
-        "model": endpoint["name"],
-        "messages": messages,
-        "stream": False,
-        "temperature": float(os.getenv("MODEL_TEMPERATURE", "0.2")),
-    }
     request = urllib.request.Request(
-        url,
-        data=json_bytes(body),
+        endpoint["url"] + "/chat/completions",
+        data=json_bytes({
+            "model": endpoint["name"],
+            "messages": messages,
+            "stream": False,
+            "temperature": float(os.getenv("MODEL_TEMPERATURE", "0.2")),
+        }),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     started = time.perf_counter()
     try:
         with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-            raw = response.read()
+            data = json.loads(response.read().decode())
         latency_ms = (time.perf_counter() - started) * 1000
-        data = json.loads(raw.decode("utf-8"))
         text = extract_text(data)
-        return {
-            "model": safe_name(endpoint["name"]),
-            "success": bool(text.strip()),
-            "content": text,
-            "score": candidate_score(text, latency_ms),
-            "duration_ms": round(latency_ms, 1),
-        }
+        return {"model": safe_name(endpoint["name"]), "success": bool(text.strip()),
+                "content": text, "score": candidate_score(text, latency_ms),
+                "duration_ms": round(latency_ms, 1)}
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         latency_ms = (time.perf_counter() - started) * 1000
-        return {
-            "model": safe_name(endpoint["name"]),
-            "success": False,
-            "content": "",
-            "score": 0,
-            "duration_ms": round(latency_ms, 1),
-            "error": str(exc),
-        }
+        return {"model": safe_name(endpoint["name"]), "success": False,
+                "content": "", "score": 0, "duration_ms": round(latency_ms, 1),
+                "error": str(exc)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -154,16 +127,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/v1/info":
             self.send_json(200, {
-                "name": "BooBooAI-GM3",
-                "engine": "ULTRAPLINIAN",
-                "version": "1.0.0",
-                "backend": "local-orchestrator",
-                "model_endpoints": len(ENDPOINTS),
-                "tiers": DEFAULT_TIER_LIMITS,
-                "features": ["parallel-racing", "deterministic-baseline-scoring", "sse", "local-openai-compatible-models"],
+                "name": "BooBooAI-GM3", "engine": "ULTRAPLINIAN", "version": "1.0.0",
+                "backend": "local-orchestrator", "model_endpoints": len(ENDPOINTS),
+                "tiers": TIER_LIMITS,
+                "features": ["parallel-racing", "transparent-baseline-scoring", "sse", "local-openai-compatible-models"],
             })
             return
-
         if self.path in ("/", "/index.html"):
             try:
                 body = (ROOT / "index.html").read_bytes()
@@ -177,31 +146,27 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-
         self.send_json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
         if self.path != "/v1/ultraplinian/completions":
             self.send_json(404, {"error": "not found"})
             return
-
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            body = json.loads(self.rfile.read(length).decode())
         except (ValueError, json.JSONDecodeError):
             self.send_json(400, {"error": "invalid JSON request"})
             return
 
-        messages = body.get("messages")
-        tier = body.get("tier", "fast")
+        messages, tier = body.get("messages"), body.get("tier", "fast")
         if not isinstance(messages, list) or not messages:
             self.send_json(400, {"error": "messages must be a non-empty array"})
             return
-        if tier not in DEFAULT_TIER_LIMITS:
+        if tier not in TIER_LIMITS:
             self.send_json(400, {"error": f"unknown tier: {tier}"})
             return
-
-        selected = ENDPOINTS[:DEFAULT_TIER_LIMITS[tier]]
+        selected = ENDPOINTS[:TIER_LIMITS[tier]]
         if not selected:
             self.send_json(503, {"error": "no model endpoints configured"})
             return
@@ -211,13 +176,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-store")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
-
         self.wfile.write(sse("race:start", {"models_queried": len(selected), "tier": tier}))
         self.wfile.flush()
 
         results: list[dict[str, Any]] = []
-        lock = threading.Lock()
         events: queue.Queue[dict[str, Any]] = queue.Queue()
+        lock = threading.Lock()
 
         def worker(endpoint: dict[str, str]) -> None:
             result = call_model(endpoint, messages)
@@ -237,11 +201,8 @@ class Handler(BaseHTTPRequestHandler):
                 break
             responded += 1
             self.wfile.write(sse("race:model", {
-                "model": result["model"],
-                "success": result["success"],
-                "score": result["score"],
-                "models_responded": responded,
-                "models_total": len(selected),
+                "model": result["model"], "success": result["success"], "score": result["score"],
+                "models_responded": responded, "models_total": len(selected),
             }))
             self.wfile.flush()
 
@@ -254,25 +215,13 @@ class Handler(BaseHTTPRequestHandler):
 
         successful.sort(key=lambda r: (-r["score"], r["duration_ms"], r["model"]))
         winner = successful[0]
-        self.wfile.write(sse("race:leader", {
-            "model": winner["model"],
-            "score": winner["score"],
-            "content": winner["content"],
-        }))
+        self.wfile.write(sse("race:leader", {"model": winner["model"], "score": winner["score"], "content": winner["content"]}))
         self.wfile.flush()
-
         rankings = sorted(results, key=lambda r: (-r["score"], r["duration_ms"], r["model"]))
         self.wfile.write(sse("race:complete", {
             "response": winner["content"],
-            "winner": {
-                "model": winner["model"],
-                "score": winner["score"],
-                "duration_ms": winner["duration_ms"],
-            },
-            "race": {"rankings": [
-                {"model": r["model"], "score": r["score"], "success": r["success"]}
-                for r in rankings
-            ]},
+            "winner": {"model": winner["model"], "score": winner["score"], "duration_ms": winner["duration_ms"]},
+            "race": {"rankings": [{"model": r["model"], "score": r["score"], "success": r["success"]} for r in rankings]},
         }))
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
