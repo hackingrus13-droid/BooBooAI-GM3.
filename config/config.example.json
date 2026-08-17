@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "name": "BooBooAI-GM",
+    "title": "Autonomous Research & Development Intelligence Platform"
+  },
+  "privacy": {
+    "local_inference": true,
+    "local_memory": true,
+    "local_knowledge": true,
+    "local_database": true,
+    "local_voice": true,
+    "local_tools": true,
+    "internet_access": false,
+    "cloud_ai": false,
+    "cloud_storage": false,
+    "remote_telemetry": false,
+    "external_analytics": false,
+    "third_party_models": false,
+    "network_mode": "OFFLINE"
+  },
+  "permissions": {
+    "terminal": "CONFIRM",
+    "filesystem": "CONFIRM",
+    "network": "DENY",
+    "database": "CONFIRM",
+    "servers": "CONFIRM",
+    "plugins": "CONFIRM",
+    "models": "ALLOW_LOCAL",
+    "security_tools": "CONFIRM"
+  },
+  "administrator": {
+    "require_confirmation_for_privileged_actions": true,
+    "allow_policy_editing": true,
+    "allow_config_export": true,
+    "allow_config_rollback": true
+  },
+  "private_rules": {
+    "enabled": true,
+    "path": "config/private_rules.local.json",
+    "commit_to_repository": false
+  },
+  "models": {
+    "providers": [],
+    "default": null,
+    "routing": []
+  },
+  "tools": {
+    "registry_path": "state/tool_registry.json",
+    "require_test_before_authorization": true
+  },
+  "knowledge": {
+    "library_path": "knowledge/library",
+    "index_path": "state/knowledge_index.json",
+    "offline_only": true
+  },
+  "cost_control": {
+    "currency": "USD",
+    "monthly_budget": 0.0,
+    "require_admin_confirmation_for_paid_services": true
+  },
+  "audit": {
+    "enabled": true,
+    "path": "state/audit.jsonl",
+    "include_secrets": false
+  }
+}
