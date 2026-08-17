@@ -13,11 +13,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Compile backend
-        run: python -m py_compile server.py
-      - name: Verify documented files
+      - name: Compile Python package
+        run: python -m compileall -q server.py booboo
+      - name: Run safe diagnostics smoke test
+        run: python -m booboo.diagnostics
+      - name: Verify required project files
         run: |
           test -f index.html
           test -f server.py
           test -f README.md
+          test -f ARCHITECTURE.md
           test -f favicon.svg
+          test -f config/config.example.json
+          test -f config/private_rules.local.example.json
+          test -f .gitignore
