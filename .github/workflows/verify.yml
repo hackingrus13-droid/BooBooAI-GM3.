@@ -1,0 +1,23 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Compile backend
+        run: python -m py_compile server.py
+      - name: Verify documented files
+        run: |
+          test -f index.html
+          test -f server.py
+          test -f README.md
+          test -f favicon.svg
