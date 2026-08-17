@@ -1,0 +1,21 @@
+# Private administrator configuration
+config/private_rules.local.json
+config/*.local.json
+
+# Local state and secrets
+state/
+.env
+.env.*
+*.key
+*.pem
+*.token
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local model/cache data
+models/
+knowledge/library/
