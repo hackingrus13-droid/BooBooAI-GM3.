@@ -16,6 +16,17 @@ jobs:
       - name: Compile Python package and scripts
         run: |
           python -m compileall -q server.py booboo scripts tests
+      - name: Import integration modules
+        run: |
+          python - <<'PY'
+          from booboo.authorization import decision
+          from booboo.kali_registry import discover
+          from booboo.yara_registry import registry
+          assert decision('kali_tools')['state'] == 'ADMIN APPROVAL REQUIRED'
+          assert discover()['execution_policy'] == 'ADMIN_APPROVAL_REQUIRED'
+          assert registry()['execution_policy'] == 'ADMIN_APPROVAL_REQUIRED'
+          print('[VERIFIED] Integration modules imported and authorization defaults checked')
+          PY
       - name: Validate JSON configuration
         run: |
           python - <<'PY'
