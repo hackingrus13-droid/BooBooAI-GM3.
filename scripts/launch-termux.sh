@@ -36,6 +36,9 @@ fi
 
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
+say "Running BooBoo governance startup coverage check"
+python3 scripts/governance_startup_check.py
+
 say "Running BooBoo Wake Up verification"
 python3 scripts/wake_up.py
 
