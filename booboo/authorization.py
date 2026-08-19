@@ -38,17 +38,32 @@ def decision(capability: str, *, administrator_approved: bool = False) -> dict[s
         "kali_tools",
         "yara_sources",
     }
+    configured = config.get("permissions", {}).get(capability)
     requires = capability in privileged
-    if requires and not administrator_approved:
+
+    # A configured hard restriction takes precedence over an approval flag.
+    # Approval cannot turn a DISABLED, UNAVAILABLE, READ ONLY, TEST ONLY, or
+    # AUTHORIZED LAB ONLY capability into unrestricted authorization.
+    restricted_states = {
+        "DISABLED",
+        "UNAVAILABLE",
+        "READ ONLY",
+        "TEST ONLY",
+        "AUTHORIZED LAB ONLY",
+    }
+    if isinstance(configured, str) and configured.upper() in restricted_states:
+        state = configured.upper()
+    elif requires and not administrator_approved:
         state = "ADMIN APPROVAL REQUIRED"
     else:
         state = "AUTHORIZED"
+
     return {
         "capability": capability,
         "state": state,
         "administrator_confirmation_required": requires,
         "administrator_approved": administrator_approved,
-        "configured_security_policy": config.get("permissions", {}).get(capability),
+        "configured_security_policy": configured,
     }
 
 
