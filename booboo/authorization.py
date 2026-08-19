@@ -16,6 +16,30 @@ class AuthorizationDenied(PermissionError):
     pass
 
 
+PRIVILEGED_CAPABILITIES = frozenset({
+    "terminal",
+    "filesystem",
+    "network",
+    "database",
+    "servers",
+    "plugins",
+    "security_tools",
+    "software_installation",
+    "external_source_import",
+    "kali_tools",
+    "yara_sources",
+})
+
+HARD_RESTRICTIONS = frozenset({
+    "DENY",
+    "DISABLED",
+    "UNAVAILABLE",
+    "READ ONLY",
+    "TEST ONLY",
+    "AUTHORIZED LAB ONLY",
+})
+
+
 def _config() -> dict[str, Any]:
     try:
         return json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -25,43 +49,32 @@ def _config() -> dict[str, Any]:
 
 def decision(capability: str, *, administrator_approved: bool = False) -> dict[str, Any]:
     config = _config()
-    privileged = {
-        "terminal",
-        "filesystem",
-        "network",
-        "database",
-        "servers",
-        "plugins",
-        "security_tools",
-        "software_installation",
-        "external_source_import",
-        "kali_tools",
-        "yara_sources",
-    }
-    configured = config.get("permissions", {}).get(capability)
-    requires = capability in privileged
+    permissions = config.get("permissions", {})
+    configured = permissions.get(capability)
+    requires = capability in PRIVILEGED_CAPABILITIES
 
-    # A configured hard restriction takes precedence over an approval flag.
-    # Approval cannot turn a DISABLED, UNAVAILABLE, READ ONLY, TEST ONLY, or
-    # AUTHORIZED LAB ONLY capability into unrestricted authorization.
-    restricted_states = {
-        "DISABLED",
-        "UNAVAILABLE",
-        "READ ONLY",
-        "TEST ONLY",
-        "AUTHORIZED LAB ONLY",
-    }
-    if isinstance(configured, str) and configured.upper() in restricted_states:
-        state = configured.upper()
-    elif requires and not administrator_approved:
-        state = "ADMIN APPROVAL REQUIRED"
+    # Unknown capabilities are never implicitly authorized.
+    if configured is None:
+        state = "DENY"
     else:
-        state = "AUTHORIZED"
+        normalized = str(configured).upper()
+        # A configured hard restriction always wins over an approval flag.
+        if normalized in HARD_RESTRICTIONS:
+            state = normalized
+        elif normalized in {"CONFIRM", "ADMIN APPROVAL REQUIRED"}:
+            state = "AUTHORIZED" if administrator_approved else "ADMIN APPROVAL REQUIRED"
+        elif normalized in {"ALLOW", "ALLOW_LOCAL", "AUTHORIZED"}:
+            state = "AUTHORIZED"
+        elif requires:
+            # Privileged capabilities must not fall through to implicit access.
+            state = "AUTHORIZED" if administrator_approved else "ADMIN APPROVAL REQUIRED"
+        else:
+            state = "DENY"
 
     return {
         "capability": capability,
         "state": state,
-        "administrator_confirmation_required": requires,
+        "administrator_confirmation_required": requires or str(configured).upper() in {"CONFIRM", "ADMIN APPROVAL REQUIRED"} if configured is not None else requires,
         "administrator_approved": administrator_approved,
         "configured_security_policy": configured,
     }
