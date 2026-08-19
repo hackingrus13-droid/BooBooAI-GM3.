@@ -21,10 +21,13 @@ class GovernanceTests(unittest.TestCase):
     def test_config_example_is_valid_json(self) -> None:
         path = ROOT / "config" / "config.example.json"
         data = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(data["schema_version"], 6)
+        self.assertEqual(data["schema_version"], 7)
         self.assertEqual(data["governance"]["private_rules_commit"], False)
         self.assertEqual(data["permissions"]["kali_tools"], "CONFIRM")
         self.assertEqual(data["permissions"]["yara_sources"], "CONFIRM")
+        self.assertEqual(data["permissions"]["model_merging"], "CONFIRM")
+        self.assertEqual(data["tools"]["mergekit"]["required_for_startup"], False)
+        self.assertEqual(data["tools"]["mergekit"]["revision"], "a6e402884ba9bc30da7f23e8304a35f19485de95")
 
     def test_verification_states_are_explicit(self) -> None:
         for state in ALLOWED_STATES:
