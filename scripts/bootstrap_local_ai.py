@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bootstrap a local Android arm64 llama.cpp server and a small free GGUF model.
+"""Bootstrap a local Android/arm64 llama.cpp server and a small free GGUF model.
 
 The bootstrap is deliberately evidence-based: downloads are from explicitly
 recorded upstream URLs, SHA-256 hashes are checked, and nothing is reported
@@ -11,10 +11,7 @@ import hashlib
 import os
 import platform
 import shutil
-import subprocess
-import sys
 import tarfile
-import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -22,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime" / "llama.cpp"
 MODELS = ROOT / "models"
 
-# Official llama.cpp Android arm64 release currently used by this bootstrap.
+# Official llama.cpp Android arm64 release verified against the upstream release page.
 LLAMA_VERSION = "b10218"
 LLAMA_URL = (
     "https://github.com/ggml-org/llama.cpp/releases/download/"
@@ -30,7 +27,7 @@ LLAMA_URL = (
 )
 LLAMA_SHA256 = "d92a6e9e63b979d3bad6cc4a4c108644c366cd0e8779d4f196662579e52eb86f"
 
-# Qwen's official 0.5B instruction-tuned GGUF fallback; Q4_K_M is about 491 MB.
+# Official Qwen 0.5B instruction-tuned GGUF fallback; Q4_K_M is 491 MB.
 MODEL_URL = (
     "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/"
     "qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true"
@@ -134,19 +131,38 @@ def write_wrapper(real_server: Path) -> Path:
     return wrapper
 
 
+def is_supported_target() -> bool:
+    machine = platform.machine().lower()
+    prefix = os.environ.get("PREFIX", "")
+    termux = prefix.startswith("/data/data/com.termux")
+    system = platform.system().lower()
+    # Termux/Python can identify Android as "Android" while the binaries are
+    # Linux/ELF. Treat a genuine Termux arm64 environment as supported.
+    return machine in {"aarch64", "arm64"} and (system in {"linux", "android"} or termux)
+
+
 def main() -> int:
-    if platform.system() != "Linux" or platform.machine().lower() not in {"aarch64", "arm64"}:
-        print("[BOOTSTRAP] SKIPPED: this automatic Android runtime is only for Linux aarch64/arm64.")
+    if not is_supported_target():
+        print(
+            "[BOOTSTRAP] SKIPPED: supported target is Android/Termux arm64 "
+            "or Linux arm64/aarch64."
+        )
         return 2
 
+    print(
+        f"[BOOTSTRAP] Target: {platform.system()} {platform.machine()}"
+        + (" (Termux)" if os.environ.get("PREFIX", "").startswith("/data/data/com.termux") else "")
+    )
     MODELS.mkdir(parents=True, exist_ok=True)
-    print("[BOOTSTRAP] Target: Android arm64")
     server = install_llama_server()
     model = install_fallback_model()
     wrapper = write_wrapper(server)
     print(f"[BOOTSTRAP] llama-server: {wrapper}")
     print(f"[BOOTSTRAP] model: {model}")
-    print("[BOOTSTRAP] Artifacts are downloaded and hash-verified. Runtime inference is still NOT VERIFIED until the server is started and tested.")
+    print(
+        "[BOOTSTRAP] Artifacts are downloaded and hash-verified. "
+        "Runtime inference is still NOT VERIFIED until the server is started and tested."
+    )
     return 0
 
 
