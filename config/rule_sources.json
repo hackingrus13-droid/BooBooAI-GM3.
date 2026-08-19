@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "policy": "EXTERNAL_SOURCES_ARE_PROVENANCE_TRACKED_AND_ADMIN_APPROVAL_REQUIRED",
+  "kali": {
+    "official_catalog": "https://www.kali.org/tools/all-tools/",
+    "official_metapackages": "https://www.kali.org/docs/general-use/metapackages/"
+  },
+  "yara": {
+    "sources": [
+      {
+        "id": "yara-rules",
+        "repository": "https://github.com/Yara-Rules/rules.git",
+        "branch": "master",
+        "license": "GPL-2.0"
+      },
+      {
+        "id": "signature-base",
+        "repository": "https://github.com/Neo23x0/signature-base.git",
+        "branch": "master",
+        "license": "DRL-1.1 with per-rule metadata exceptions"
+      },
+      {
+        "id": "reversinglabs-yara-rules",
+        "repository": "https://github.com/reversinglabs/reversinglabs-yara-rules.git",
+        "branch": "develop",
+        "license": "VERIFY UPSTREAM BEFORE REDISTRIBUTION"
+      }
+    ],
+    "engine_documentation": "https://virustotal.github.io/yara-x/docs/"
+  },
+  "behavior": {
+    "vendor_content_is_not_represented_as_original": true,
+    "license_must_be_recorded": true,
+    "rule_execution_requires_administrator_approval": true
+  }
+}
