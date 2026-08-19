@@ -86,14 +86,33 @@ def download(url: str, target: Path, expected_sha256: str) -> None:
     print(f"[BOOTSTRAP] VERIFIED SHA-256: {target}")
 
 
+def is_elf_executable(path: Path) -> bool:
+    """Return true only for a regular file with an ELF executable header."""
+    if not path.is_file():
+        return False
+    try:
+        with path.open("rb") as handle:
+            return handle.read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
 def find_llama_server() -> Path | None:
-    for candidate in [
+    """Find the real llama-server binary, never the BooBooAI shell wrapper."""
+    candidates = [
         RUNTIME / "llama-server",
         RUNTIME / "bin" / "llama-server",
         ROOT / "bin" / "llama-server",
         Path.home() / "bin" / "llama-server",
-    ]:
-        if candidate.is_file():
+    ]
+    candidates.extend(sorted(RUNTIME.rglob("llama-server")))
+    seen: set[Path] = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if is_elf_executable(candidate):
             return candidate
     return None
 
@@ -113,11 +132,7 @@ def install_llama_server() -> Path:
 
     server = find_llama_server()
     if server is None:
-        matches = list(RUNTIME.rglob("llama-server"))
-        if matches:
-            server = matches[0]
-    if server is None:
-        raise RuntimeError("Verified llama.cpp archive did not contain llama-server")
+        raise RuntimeError("Verified llama.cpp archive did not contain an ELF llama-server")
     server.chmod(server.stat().st_mode | 0o111)
     return server
 
@@ -140,7 +155,13 @@ def install_fallback_model() -> Path:
 
 
 def write_wrapper(real_server: Path) -> Path:
+    """Install a wrapper only when it would not overwrite the real binary."""
     wrapper = ROOT / "runtime" / "llama-server"
+    real_server = real_server.resolve()
+    if wrapper.resolve() == real_server:
+        real_server.chmod(real_server.stat().st_mode | 0o111)
+        return real_server
+
     wrapper.parent.mkdir(parents=True, exist_ok=True)
     lib_dirs = sorted({p.parent for p in real_server.parent.rglob("*.so*")})
     paths = ":".join(str(p) for p in lib_dirs)
