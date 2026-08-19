@@ -15,12 +15,15 @@ class GovernanceTests(unittest.TestCase):
         data = json.loads(path.read_text(encoding="utf-8"))
         self.assertIsInstance(data.get("rules"), list)
         self.assertGreater(len(data["rules"]), 0)
+        self.assertGreaterEqual(len(data["rules"]), 30)
 
     def test_config_example_is_valid_json(self) -> None:
         path = ROOT / "config" / "config.example.json"
         data = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(data["schema_version"], 5)
+        self.assertEqual(data["schema_version"], 6)
         self.assertEqual(data["governance"]["private_rules_commit"], False)
+        self.assertEqual(data["permissions"]["kali_tools"], "CONFIRM")
+        self.assertEqual(data["permissions"]["yara_sources"], "CONFIRM")
 
     def test_verification_states_are_explicit(self) -> None:
         for state in ALLOWED_STATES:
@@ -32,6 +35,8 @@ class GovernanceTests(unittest.TestCase):
         self.assertIn("Never fabricate evidence", prompt)
         self.assertIn("known failed approach", prompt)
         self.assertIn("authorized", prompt)
+        self.assertIn("Kali capabilities", prompt)
+        self.assertIn("YARA", prompt)
 
     def test_policy_snapshot_does_not_expose_private_contents(self) -> None:
         snapshot = policy_snapshot()
