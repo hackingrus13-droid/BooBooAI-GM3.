@@ -4,6 +4,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 log(){ printf '\n[BOOBOO] %s\n' "$*"; }
 
+# Starting servers and installing the local runtime are privileged project
+# capabilities. Require explicit administrator approval for this invocation.
+if [[ "${BOOBOO_ADMIN_APPROVED:-0}" != "1" ]]; then
+  echo "[BOOBOO] ADMIN APPROVAL REQUIRED: export BOOBOO_ADMIN_APPROVED=1 and rerun."
+  exit 77
+fi
+
 mkdir -p config state knowledge/library models runtime
 [[ -f config/config.json ]] || cp config/config.example.json config/config.json
 [[ -f config/private_rules.local.json ]] || { [[ -f config/private_rules.local.example.json ]] && cp config/private_rules.local.example.json config/private_rules.local.json || true; }
@@ -25,7 +32,7 @@ LLAMA_SERVER="${BOOBOO_LLAMA_SERVER:-}"
 if [[ -z "$MODEL" || -z "$LLAMA_SERVER" ]]; then
   if [[ "${BOOBOO_AUTO_BOOTSTRAP_AI:-1}" == "1" && "$(uname -m)" == "aarch64" ]]; then
     log "No complete local AI runtime detected; starting verified bootstrap."
-    if python3 scripts/bootstrap_local_ai.py; then
+    if python3 scripts/bootstrap_local_ai.py --admin-approve; then
       [[ -n "$MODEL" ]] || MODEL="$(find "$ROOT/models" -maxdepth 1 -type f -name '*.gguf' -print -quit)"
       [[ -n "$LLAMA_SERVER" ]] || LLAMA_SERVER="$ROOT/runtime/llama-server"
     else
@@ -64,4 +71,4 @@ PY
 
 log "Starting BooBooAI-GM browser service on http://127.0.0.1:8080/"
 command -v termux-open-url >/dev/null 2>&1 && termux-open-url 'http://127.0.0.1:8080/' >/dev/null 2>&1 || true
-exec python3 server.py
+exec env BOOBOO_ADMIN_APPROVED=1 python3 server.py
