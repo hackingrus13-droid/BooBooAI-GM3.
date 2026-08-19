@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COMMIT = "701fc2a3bf30eae73af2f0dd10dda69e8f9872e0"
 
 
 def run(*args: str) -> tuple[int, str]:
@@ -21,10 +20,23 @@ def main() -> int:
     failures: list[str] = []
 
     code, head = run("git", "rev-parse", "HEAD")
-    if code != 0 or head != EXPECTED_COMMIT:
-        failures.append(f"HEAD is {head!r}; expected {EXPECTED_COMMIT}")
+    if code != 0 or not head:
+        failures.append(f"unable to determine local HEAD: {head!r}")
     else:
-        print(f"[PASS] deployment commit = {EXPECTED_COMMIT}")
+        print(f"[PASS] local deployment commit = {head}")
+
+    # When the checkout has an origin, compare the local commit to the current
+    # remote main ref. This avoids a hard-coded commit that becomes stale after
+    # a legitimate governance fix is committed.
+    code, remote_head = run("git", "ls-remote", "origin", "refs/heads/main")
+    if code == 0 and remote_head:
+        remote_sha = remote_head.split()[0]
+        if head != remote_sha:
+            failures.append(f"local HEAD {head} differs from origin/main {remote_sha}")
+        else:
+            print(f"[PASS] local deployment matches origin/main = {remote_sha}")
+    else:
+        failures.append("unable to verify local deployment against origin/main")
 
     code, status = run("git", "status", "--porcelain", "--untracked-files=no")
     if code != 0:
@@ -45,30 +57,40 @@ def main() -> int:
         "scripts/launch-final-termux.sh",
         "scripts/launch-linux.sh",
         "scripts/launch-windows.ps1",
+        "scripts/wake_up.py",
+        "scripts/governance_startup_check.py",
+        "scripts/final_verify.py",
         "tests/test_governance.py",
         "tests/test_capability_integrations.py",
         "config/config.example.json",
         "config/governed_rules.json",
         "config/rule_sources.json",
     ]
-    for relative in required:
-        if not (ROOT / relative).is_file():
-            failures.append(f"missing required file: {relative}")
-    if not failures:
+    missing = [relative for relative in required if not (ROOT / relative).is_file()]
+    if missing:
+        failures.extend(f"missing required file: {relative}" for relative in missing)
+    else:
         print(f"[PASS] required project files present ({len(required)})")
 
     try:
         config = json.loads((ROOT / "config" / "config.example.json").read_text(encoding="utf-8"))
-        for capability in (
+        privileged = (
             "terminal", "filesystem", "network", "database", "servers", "plugins",
             "security_tools", "software_installation", "external_source_import",
             "kali_tools", "yara_sources",
-        ):
+        )
+        for capability in privileged:
             if config["permissions"][capability] != "CONFIRM":
                 failures.append(f"privileged capability {capability} is not CONFIRM")
         print("[PASS] privileged configuration baseline requires CONFIRM")
     except Exception as exc:
         failures.append(f"configuration validation failed: {exc}")
+
+    code, output = run(sys.executable, "scripts/governance_startup_check.py")
+    if code:
+        failures.append(f"startup governance coverage check failed:\n{output}")
+    else:
+        print("[PASS] startup governance coverage check")
 
     code, output = run(sys.executable, "-m", "compileall", "-q", "server.py", "booboo", "scripts", "tests")
     if code:
@@ -89,7 +111,7 @@ def main() -> int:
         return 1
 
     print("\nFINAL VERIFICATION: PASSED")
-    print("Governance, authorization guards, committed deployment state, and tests are verified for this repository checkout.")
+    print("Governance, authorization coverage, deployment state, and tests are verified for this checkout.")
     return 0
 
 
