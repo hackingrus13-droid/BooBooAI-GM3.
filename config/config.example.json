@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "identity": {
     "name": "BooBooAI-GM",
     "title": "Personal Administrator-Governed AI Platform",
@@ -33,7 +33,8 @@
     "kali_tools": "CONFIRM",
     "yara_sources": "CONFIRM",
     "software_installation": "CONFIRM",
-    "external_source_import": "CONFIRM"
+    "external_source_import": "CONFIRM",
+    "model_merging": "CONFIRM"
   },
   "administrator": {
     "require_confirmation_for_privileged_actions": true,
@@ -72,7 +73,15 @@
     "registry_path": "state/tool_registry.json",
     "capability_inventory_path": "state/capability_inventory.json",
     "require_test_before_authorization": true,
-    "kali_catalog_source": "https://www.kali.org/tools/all-tools/"
+    "kali_catalog_source": "https://www.kali.org/tools/all-tools/",
+    "mergekit": {
+      "enabled": true,
+      "source": "https://github.com/arcee-ai/mergekit.git",
+      "revision": "a6e402884ba9bc30da7f23e8304a35f19485de95",
+      "license": "LGPL-3.0-only",
+      "required_for_startup": false,
+      "administrator_approval_required": true
+    }
   },
   "yara": {
     "source_registry_path": "config/rule_sources.json",
