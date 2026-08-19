@@ -54,47 +54,66 @@ if [ -n "$(git status --porcelain)" ]; then
     git diff --stat >"$RECOVERY/tracked.stat"
     pass "dirty state recorded: $RECOVERY"
 
-    # Preserve all untracked top-level entries without putting large runtime/model
-    # files into the Git object database. Unknown entries are preserved, not deleted.
+    # Preserve untracked content outside Git. If a top-level directory also
+    # contains tracked files, preserve only its untracked paths; never move the
+    # tracked portion of a mixed directory.
     while IFS= read -r -d '' path; do
         top="${path%%/*}"
-        [ -e "$top" ] || continue
+        [ -e "$path" ] || continue
         [ "$top" = '.git' ] && continue
-        [ -e "$RECOVERY/$top" ] && continue
-        if git ls-files --error-unmatch -- "$top" >/dev/null 2>&1; then
-            continue
-        fi
         mkdir -p "$RECOVERY/untracked"
-        mv -- "$top" "$RECOVERY/untracked/"
-        info "preserved untracked entry: $top"
+        if [ -z "$(git ls-files -- "$top")" ]; then
+            [ -e "$RECOVERY/untracked/$top" ] || mv -- "$top" "$RECOVERY/untracked/"
+            info "preserved untracked entry: $top"
+        else
+            dest="$RECOVERY/untracked/$path"
+            mkdir -p "$(dirname "$dest")"
+            [ -e "$dest" ] || {
+                mv -- "$path" "$dest"
+                info "preserved untracked path: $path"
+            }
+        fi
     done < <(git ls-files --others --exclude-standard -z)
 
-    # Fetch only after local state has been preserved. Fast-forward is the only
-    # synchronization permitted here; no reset, clean, force, or overwrite.
     git fetch --prune origin "$BRANCH"
     LOCAL="$(git rev-parse HEAD)"
     REMOTE="$(git rev-parse "origin/$BRANCH")"
     if [ "$LOCAL" != "$REMOTE" ]; then
-        git merge --ff-only "origin/$BRANCH" || fail 'local checkout cannot fast-forward safely after preservation.'
+        git merge --ff-only "origin/$BRANCH" || fail "local checkout cannot fast-forward safely after preservation; backup remains at $RECOVERY"
     fi
 
-    # Reapply the exact tracked working-tree change, if one existed.
     if [ -s "$RECOVERY/tracked.patch" ]; then
         git apply --check "$RECOVERY/tracked.patch" || fail "preserved tracked change cannot be safely reapplied; backup remains at $RECOVERY"
         git apply "$RECOVERY/tracked.patch" || fail "preserved tracked change could not be reapplied; backup remains at $RECOVERY"
     fi
 
-    # Restore preserved untracked entries only when Git still considers the path
-    # untracked. Never overwrite a file that became tracked upstream.
+    # Restore preserved paths only when the destination is still untracked and
+    # absent. Never overwrite a path that upstream made tracked or that already exists.
     if [ -d "$RECOVERY/untracked" ]; then
         while IFS= read -r -d '' src; do
-            name="${src##*/}"
-            [ -e "$name" ] || {
-                git ls-files --error-unmatch -- "$name" >/dev/null 2>&1 && fail "upstream now tracks preserved path: $name; backup remains at $RECOVERY"
-                mv -- "$src" .
-                info "restored preserved untracked entry: $name"
-            }
-        done < <(find "$RECOVERY/untracked" -mindepth 1 -maxdepth 1 -print0)
+            rel="${src#"$RECOVERY/untracked/"}"
+            dest="$TARGET/$rel"
+            if [ -e "$dest" ]; then
+                git ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && fail "upstream now tracks preserved path: $rel; backup remains at $RECOVERY"
+                fail "destination already exists for preserved path: $rel; backup remains at $RECOVERY"
+            fi
+            mkdir -p "$(dirname "$dest")"
+            mv -- "$src" "$dest"
+            info "restored preserved untracked path: $rel"
+        done < <(find "$RECOVERY/untracked" -mindepth 1 -type f -print0)
+        # Restore empty directories that were moved as complete untracked trees.
+        while IFS= read -r -d '' src; do
+            rel="${src#"$RECOVERY/untracked/"}"
+            dest="$TARGET/$rel"
+            if [ -e "$dest" ]; then
+                git ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && fail "upstream now tracks preserved entry: $rel; backup remains at $RECOVERY"
+                fail "destination already exists for preserved entry: $rel; backup remains at $RECOVERY"
+            fi
+            mkdir -p "$(dirname "$dest")"
+            mv -- "$src" "$dest"
+            info "restored preserved untracked entry: $rel"
+        done < <(find "$RECOVERY/untracked" -mindepth 1 -type d -empty -print0)
+        find "$RECOVERY/untracked" -depth -type d -empty -delete 2>/dev/null || true
         rmdir "$RECOVERY/untracked" 2>/dev/null || true
     fi
     pass 'local state preserved and source synchronized without destructive reset'
