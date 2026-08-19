@@ -1,69 +1,107 @@
 # BooBooAI-GM3
 
-BooBooAI-GM3 is the project name for the existing G0DM0DƎ / ULTRAPLINIAN interface and its local orchestration layer.
+BooBooAI-GM3 is a personal, administrator-governed AI platform with a local-first orchestration core. The project keeps the existing browser frontend contract while the core services are developed independently and documented by provenance.
 
-## Current architecture
+## Current verified architecture
 
-- `index.html` — existing frontend UI; preserved rather than replaced.
+- `index.html` — existing browser frontend; preserved for compatibility.
 - `server.py` — standard-library-only local orchestration server.
-- `/v1/info` — reports the running engine and configured endpoints.
-- `/v1/ultraplinian/completions` — frontend-compatible Server-Sent Events endpoint.
-- Local model servers — any OpenAI-compatible `/v1/chat/completions` provider can be registered.
+- `booboo/governance.py` — governed behavior, verification states, private-rule isolation, and audit support.
+- `booboo/diagnostics.py` — safe startup diagnostics and capability reporting.
+- `booboo/capabilities.py` — environment/tool discovery.
+- `config/governed_rules.json` — public non-secret project rules.
+- `config/private_rules.local.json` — administrator-local rules; never commit populated private rules.
+- `scripts/wake_up.py` — BooBoo Wake Up verification entry point.
+- `scripts/launch-termux.sh` — Termux launcher that verifies first, then starts the browser server.
+- `scripts/colab_bootstrap.py` — Google Colab development/verification bootstrap.
+- `tests/test_governance.py` — governance and configuration tests.
 
-## Local-first setup
+## Governance model
 
-The orchestrator listens on `127.0.0.1:8080` by default. The default model endpoint is `127.0.0.1:8081` so the two services do not collide.
+The core behavior policy requires evidence before verification claims, distinguishes documented facts from inference, records failures, avoids repeating known failed approaches without new evidence, and keeps private administrator rules local.
 
-### 1. Start a local model server
+Administrator control applies to this project's approved configuration and permissions. It does not authorize bypassing host-platform restrictions, authentication, law, safety controls, or third-party service policies. Security research is intended for owned, isolated, or explicitly authorized environments.
 
-For llama.cpp, start an OpenAI-compatible server on port 8081. The exact model path depends on the model you have installed.
+## Termux / Android
 
-Example shape:
+The intended phone workflow is:
 
 ```bash
-llama-server -m /path/to/model.gguf --port 8081
+cd ~/BooBooAI-GM3.
+chmod +x scripts/launch-termux.sh
+./scripts/launch-termux.sh
 ```
 
-### 2. Start BooBooAI-GM3
+The launcher performs the verified wake-up sequence and then starts the local server on `127.0.0.1:8080`.
 
-```bash
-python3 server.py
-```
-
-Then open:
+Open:
 
 ```text
 http://127.0.0.1:8080/
 ```
 
-Check the backend with:
-
-```text
-http://127.0.0.1:8080/v1/info
-```
-
-### Multiple local model servers
-
-Set `MODEL_ENDPOINTS` before starting the orchestrator. Separate endpoints represent separate model workers; they are not fake copies of one model.
+Health check:
 
 ```bash
-MODEL_ENDPOINTS='local1=http://127.0.0.1:8081/v1;local2=http://127.0.0.1:8082/v1' python3 server.py
+curl http://127.0.0.1:8080/api/health
 ```
 
-The existing UI tiers remain:
+Governance report:
+
+```text
+http://127.0.0.1:8080/api/governance
+```
+
+Model discovery:
+
+```text
+http://127.0.0.1:8080/api/models
+```
+
+Diagnostics:
+
+```text
+http://127.0.0.1:8080/api/diagnostics
+```
+
+## Local model requirement
+
+BooBooAI-GM3 does not fabricate model availability. A local OpenAI-compatible model server must actually be running before `/v1/ultraplinian/completions` can return an AI response.
+
+The default endpoint is:
+
+```text
+http://127.0.0.1:8081/v1
+```
+
+For Termux, the `llama-cpp` package exists in the Termux package ecosystem, but the actual package availability, device architecture, memory requirements, model size, and runtime performance must be checked on the device before claiming a working local model.
+
+## Google Colab
+
+`python scripts/colab_bootstrap.py` can be used inside a Colab checkout for development and verification.
+
+Free managed Colab is not treated as persistent web hosting. Google documents that free resources are dynamic and not guaranteed, and managed runtimes restrict several forms of persistent/remote web-service use. Therefore BooBooAI-GM3 uses Colab as a development/testing environment and Termux or other user-controlled hardware as the persistent localhost browser environment.
+
+## Model racing
+
+The existing frontend tiers remain:
 
 - Fast — up to 12 configured endpoints
 - Balanced — up to 20 configured endpoints
 - Smart — up to 27 configured endpoints
 
-If fewer endpoints are actually configured, the backend reports and queries the number that really exists. It does not fabricate model counts.
+Only endpoints that actually respond are counted as reachable. The baseline race score is deterministic and transparent; it is not represented as a reliable semantic judge.
 
-## Scoring
+## Verification
 
-The first implementation uses a transparent deterministic baseline score based on response presence, useful length, basic structure, and latency. This is intentionally documented as a baseline rather than pretending it is a reliable semantic judge.
+Run locally:
 
-A stronger judge/evaluator can be added later without changing the frontend contract.
+```bash
+python3 -m compileall -q server.py booboo scripts
+python3 -m unittest discover -s tests -v
+python3 -m booboo.diagnostics
+```
 
-## Verification status
+GitHub Actions performs the same class of syntax, configuration, governance, diagnostics, and required-file checks on pushes to `main` and pull requests.
 
-The repository was inspected before adding the backend. Existing frontend behavior was preserved. The backend was added as a separate file and the README documents the actual architecture and startup path.
+A passing syntax or unit test does not by itself prove that a local AI model, GPU, network, or Android-specific capability is operational. Those require actual runtime evidence.

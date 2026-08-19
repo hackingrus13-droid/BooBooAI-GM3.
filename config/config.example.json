@@ -1,8 +1,8 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "identity": {
     "name": "BooBooAI-GM",
-    "title": "Autonomous Research & Development Intelligence Platform",
+    "title": "Personal Administrator-Governed AI Platform",
     "architect_title": "BooBooAI-GM Project Architect",
     "originality_standard": "INDEPENDENT_CORE"
   },
@@ -29,13 +29,31 @@
     "servers": "CONFIRM",
     "plugins": "CONFIRM",
     "models": "ALLOW_LOCAL",
-    "security_tools": "CONFIRM"
+    "security_tools": "CONFIRM",
+    "software_installation": "CONFIRM",
+    "external_source_import": "CONFIRM"
   },
   "administrator": {
     "require_confirmation_for_privileged_actions": true,
     "allow_policy_editing": true,
     "allow_config_export": true,
-    "allow_config_rollback": true
+    "allow_config_rollback": true,
+    "allow_authorized_security_lab": true,
+    "allow_platform_policy_bypass": false
+  },
+  "governance": {
+    "public_rules_path": "config/governed_rules.json",
+    "private_rules_path": "config/private_rules.local.json",
+    "private_rules_commit": false,
+    "verification_states": [
+      "VERIFIED",
+      "PARTIALLY VERIFIED",
+      "UNVERIFIED",
+      "FAILED",
+      "UNKNOWN",
+      "NOT TESTED",
+      "NOT APPLICABLE"
+    ]
   },
   "private_rules": {
     "enabled": true,
@@ -60,7 +78,7 @@
   "external_adapters": {
     "enabled": false,
     "allow_optional_providers": false,
-    "note": "Adapters may be implemented later without becoming part of the BooBooAI-GM core."
+    "note": "Optional adapters may be added later without becoming required core dependencies."
   },
   "cost_control": {
     "currency": "USD",
