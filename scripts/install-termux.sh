@@ -13,7 +13,7 @@ info(){ printf '[INFO] %s\n' "$*"; }
 command -v pkg >/dev/null 2>&1 || fail 'Termux pkg command not found.'
 printf '%s\n' '============================================================'
 printf '%s\n' ' BOOBOOAI-GM3 — TERMUX INSTALL / VERIFY'
-printf '%s\n' ' FACTS ONLY / SAFE GIT / NO DESTRUCTIVE RESET'
+printf '%s\n' ' FACTS ONLY / SAFE RECOVERY / NO DESTRUCTIVE RESET'
 printf '%s\n' '============================================================'
 
 info 'Updating Termux package indexes.'
@@ -44,14 +44,66 @@ ORIGIN="$(git remote get-url origin 2>/dev/null || true)"
 CURRENT_BRANCH="$(git branch --show-current)"
 [ "$CURRENT_BRANCH" = "$BRANCH" ] || fail "checkout is on '$CURRENT_BRANCH', not '$BRANCH'"
 
-[ -z "$(git status --porcelain)" ] || fail 'working tree contains local changes; nothing was overwritten.'
+# Recoverable dirty-state handling. Nothing is deleted or reset.
+if [ -n "$(git status --porcelain)" ]; then
+    printf '\n%s\n' '=== SAFE DIRTY-WORKTREE RECOVERY ==='
+    RECOVERY="$HOME/.boobooai-recovery/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$RECOVERY"
+    git status --porcelain=v1 >"$RECOVERY/status.txt"
+    git diff --binary >"$RECOVERY/tracked.patch"
+    git diff --stat >"$RECOVERY/tracked.stat"
+    pass "dirty state recorded: $RECOVERY"
+
+    # Preserve all untracked top-level entries without putting large runtime/model
+    # files into the Git object database. Unknown entries are preserved, not deleted.
+    while IFS= read -r -d '' path; do
+        top="${path%%/*}"
+        [ -e "$top" ] || continue
+        [ "$top" = '.git' ] && continue
+        [ -e "$RECOVERY/$top" ] && continue
+        if git ls-files --error-unmatch -- "$top" >/dev/null 2>&1; then
+            continue
+        fi
+        mkdir -p "$RECOVERY/untracked"
+        mv -- "$top" "$RECOVERY/untracked/"
+        info "preserved untracked entry: $top"
+    done < <(git ls-files --others --exclude-standard -z)
+
+    # Fetch only after local state has been preserved. Fast-forward is the only
+    # synchronization permitted here; no reset, clean, force, or overwrite.
+    git fetch --prune origin "$BRANCH"
+    LOCAL="$(git rev-parse HEAD)"
+    REMOTE="$(git rev-parse "origin/$BRANCH")"
+    if [ "$LOCAL" != "$REMOTE" ]; then
+        git merge --ff-only "origin/$BRANCH" || fail 'local checkout cannot fast-forward safely after preservation.'
+    fi
+
+    # Reapply the exact tracked working-tree change, if one existed.
+    if [ -s "$RECOVERY/tracked.patch" ]; then
+        git apply --check "$RECOVERY/tracked.patch" || fail "preserved tracked change cannot be safely reapplied; backup remains at $RECOVERY"
+        git apply "$RECOVERY/tracked.patch" || fail "preserved tracked change could not be reapplied; backup remains at $RECOVERY"
+    fi
+
+    # Restore preserved untracked entries only when Git still considers the path
+    # untracked. Never overwrite a file that became tracked upstream.
+    if [ -d "$RECOVERY/untracked" ]; then
+        while IFS= read -r -d '' src; do
+            name="${src##*/}"
+            [ -e "$name" ] || {
+                git ls-files --error-unmatch -- "$name" >/dev/null 2>&1 && fail "upstream now tracks preserved path: $name; backup remains at $RECOVERY"
+                mv -- "$src" .
+                info "restored preserved untracked entry: $name"
+            }
+        done < <(find "$RECOVERY/untracked" -mindepth 1 -maxdepth 1 -print0)
+        rmdir "$RECOVERY/untracked" 2>/dev/null || true
+    fi
+    pass 'local state preserved and source synchronized without destructive reset'
+fi
 
 git fetch --prune origin "$BRANCH"
 LOCAL="$(git rev-parse HEAD)"
 REMOTE="$(git rev-parse "origin/$BRANCH")"
-if [ "$LOCAL" != "$REMOTE" ]; then
-    git merge --ff-only "origin/$BRANCH" || fail 'local checkout cannot fast-forward safely to origin/main.'
-fi
+[ "$LOCAL" = "$REMOTE" ] || git merge --ff-only "origin/$BRANCH" || fail 'local checkout cannot fast-forward safely to origin/main.'
 pass "source synchronized with origin/$BRANCH"
 
 for f in server.py index.html config/config.example.json config/governed_rules.json scripts/wake_up.py scripts/launch-final-termux.sh; do
