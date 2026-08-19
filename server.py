@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from booboo.authorization import require
 from booboo.governance import audit, policy_snapshot, system_prompt
 
 ROOT = Path(__file__).resolve().parent
@@ -327,6 +328,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    approved = os.environ.get("BOOBOO_ADMIN_APPROVED") == "1"
+    require("servers", administrator_approved=approved)
     print(f"BooBooAI-GM3 ULTRAPLINIAN listening on http://{HOST}:{PORT}")
     print(f"Configured model endpoints: {len(ENDPOINTS)}")
     for item in model_status():
