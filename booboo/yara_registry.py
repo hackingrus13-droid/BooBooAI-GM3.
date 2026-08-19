@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .authorization import require
+
 RULE_SOURCES = [
     {
         "id": "yara-rules",
@@ -63,7 +65,9 @@ def engine_status() -> dict[str, Any]:
     return {"engines": engines}
 
 
-def clone_sources(destination: Path) -> list[dict[str, Any]]:
+def clone_sources(destination: Path, *, administrator_approved: bool = False) -> list[dict[str, Any]]:
+    """Import external rule sources only after administrator authorization."""
+    require("external_source_import", administrator_approved=administrator_approved)
     destination.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, Any]] = []
     git = shutil.which("git")
