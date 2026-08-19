@@ -48,30 +48,31 @@ CURRENT_BRANCH="$(git branch --show-current)"
 if [ -n "$(git status --porcelain)" ]; then
     printf '\n%s\n' '=== SAFE DIRTY-WORKTREE RECOVERY ==='
     RECOVERY="$HOME/.boobooai-recovery/$(date +%Y%m%d-%H%M%S)"
-    mkdir -p "$RECOVERY"
+    mkdir -p "$RECOVERY/untracked-top" "$RECOVERY/untracked-paths"
     git status --porcelain=v1 >"$RECOVERY/status.txt"
     git diff --binary >"$RECOVERY/tracked.patch"
     git diff --stat >"$RECOVERY/tracked.stat"
     pass "dirty state recorded: $RECOVERY"
 
-    # Preserve untracked content outside Git. If a top-level directory also
-    # contains tracked files, preserve only its untracked paths; never move the
-    # tracked portion of a mixed directory.
+    # Preserve every untracked object outside Git. Complete top-level trees that
+    # contain no tracked files are moved as whole trees; mixed trees preserve only
+    # their untracked paths. No unknown content is deleted or overwritten.
     while IFS= read -r -d '' path; do
         top="${path%%/*}"
         [ -e "$path" ] || continue
         [ "$top" = '.git' ] && continue
-        mkdir -p "$RECOVERY/untracked"
         if [ -z "$(git ls-files -- "$top")" ]; then
-            [ -e "$RECOVERY/untracked/$top" ] || mv -- "$top" "$RECOVERY/untracked/"
-            info "preserved untracked entry: $top"
+            if [ ! -e "$RECOVERY/untracked-top/$top" ]; then
+                mv -- "$top" "$RECOVERY/untracked-top/"
+                info "preserved untracked tree: $top"
+            fi
         else
-            dest="$RECOVERY/untracked/$path"
+            dest="$RECOVERY/untracked-paths/$path"
             mkdir -p "$(dirname "$dest")"
-            [ -e "$dest" ] || {
+            if [ ! -e "$dest" ]; then
                 mv -- "$path" "$dest"
                 info "preserved untracked path: $path"
-            }
+            fi
         fi
     done < <(git ls-files --others --exclude-standard -z)
 
@@ -87,11 +88,22 @@ if [ -n "$(git status --porcelain)" ]; then
         git apply "$RECOVERY/tracked.patch" || fail "preserved tracked change could not be reapplied; backup remains at $RECOVERY"
     fi
 
-    # Restore preserved paths only when the destination is still untracked and
-    # absent. Never overwrite a path that upstream made tracked or that already exists.
-    if [ -d "$RECOVERY/untracked" ]; then
+    # Restore whole untracked trees first. Refuse to overwrite anything that now
+    # exists or has become tracked upstream.
+    while IFS= read -r -d '' src; do
+        name="${src##*/}"
+        if [ -e "$TARGET/$name" ]; then
+            git ls-files --error-unmatch -- "$name" >/dev/null 2>&1 && fail "upstream now tracks preserved tree: $name; backup remains at $RECOVERY"
+            fail "destination already exists for preserved tree: $name; backup remains at $RECOVERY"
+        fi
+        mv -- "$src" "$TARGET/"
+        info "restored preserved untracked tree: $name"
+    done < <(find "$RECOVERY/untracked-top" -mindepth 1 -maxdepth 1 -print0)
+
+    # Restore individual untracked paths from mixed directories.
+    if [ -d "$RECOVERY/untracked-paths" ]; then
         while IFS= read -r -d '' src; do
-            rel="${src#"$RECOVERY/untracked/"}"
+            rel="${src#"$RECOVERY/untracked-paths/"}"
             dest="$TARGET/$rel"
             if [ -e "$dest" ]; then
                 git ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && fail "upstream now tracks preserved path: $rel; backup remains at $RECOVERY"
@@ -100,22 +112,9 @@ if [ -n "$(git status --porcelain)" ]; then
             mkdir -p "$(dirname "$dest")"
             mv -- "$src" "$dest"
             info "restored preserved untracked path: $rel"
-        done < <(find "$RECOVERY/untracked" -mindepth 1 -type f -print0)
-        # Restore empty directories that were moved as complete untracked trees.
-        while IFS= read -r -d '' src; do
-            rel="${src#"$RECOVERY/untracked/"}"
-            dest="$TARGET/$rel"
-            if [ -e "$dest" ]; then
-                git ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && fail "upstream now tracks preserved entry: $rel; backup remains at $RECOVERY"
-                fail "destination already exists for preserved entry: $rel; backup remains at $RECOVERY"
-            fi
-            mkdir -p "$(dirname "$dest")"
-            mv -- "$src" "$dest"
-            info "restored preserved untracked entry: $rel"
-        done < <(find "$RECOVERY/untracked" -mindepth 1 -type d -empty -print0)
-        find "$RECOVERY/untracked" -depth -type d -empty -delete 2>/dev/null || true
-        rmdir "$RECOVERY/untracked" 2>/dev/null || true
+        done < <(find "$RECOVERY/untracked-paths" -type f -print0)
     fi
+
     pass 'local state preserved and source synchronized without destructive reset'
 fi
 
