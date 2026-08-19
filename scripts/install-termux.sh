@@ -44,7 +44,6 @@ ORIGIN="$(git remote get-url origin 2>/dev/null || true)"
 CURRENT_BRANCH="$(git branch --show-current)"
 [ "$CURRENT_BRANCH" = "$BRANCH" ] || fail "checkout is on '$CURRENT_BRANCH', not '$BRANCH'"
 
-# Recoverable dirty-state handling. Nothing is deleted or reset.
 if [ -n "$(git status --porcelain)" ]; then
     printf '\n%s\n' '=== SAFE DIRTY-WORKTREE RECOVERY ==='
     RECOVERY="$HOME/.boobooai-recovery/$(date +%Y%m%d-%H%M%S)"
@@ -54,9 +53,6 @@ if [ -n "$(git status --porcelain)" ]; then
     git diff --stat >"$RECOVERY/tracked.stat"
     pass "dirty state recorded: $RECOVERY"
 
-    # Preserve every untracked object outside Git. Complete top-level trees that
-    # contain no tracked files are moved as whole trees; mixed trees preserve only
-    # their untracked paths. No unknown content is deleted or overwritten.
     while IFS= read -r -d '' path; do
         top="${path%%/*}"
         [ -e "$path" ] || continue
@@ -85,11 +81,9 @@ if [ -n "$(git status --porcelain)" ]; then
 
     if [ -s "$RECOVERY/tracked.patch" ]; then
         git apply --check "$RECOVERY/tracked.patch" || fail "preserved tracked change cannot be safely reapplied; backup remains at $RECOVERY"
-        git apply "$RECOVERY/tracked.patch" || fail "preserved tracked change could not be reapplied; backup remains at $RECOVERY"
+        git apply "$RECOVERY/tracked.patch" || fail "preserved tracked change could not be safely reapplied; backup remains at $RECOVERY"
     fi
 
-    # Restore whole untracked trees first. Refuse to overwrite anything that now
-    # exists or has become tracked upstream.
     while IFS= read -r -d '' src; do
         name="${src##*/}"
         if [ -e "$TARGET/$name" ]; then
@@ -100,7 +94,6 @@ if [ -n "$(git status --porcelain)" ]; then
         info "restored preserved untracked tree: $name"
     done < <(find "$RECOVERY/untracked-top" -mindepth 1 -maxdepth 1 -print0)
 
-    # Restore individual untracked paths from mixed directories.
     if [ -d "$RECOVERY/untracked-paths" ]; then
         while IFS= read -r -d '' src; do
             rel="${src#"$RECOVERY/untracked-paths/"}"
@@ -133,8 +126,11 @@ python3 -m compileall -q server.py booboo scripts tests
 pass 'Python compilation'
 python3 -m unittest discover -s tests -v
 pass 'complete test suite'
-python3 -m booboo.diagnostics >/tmp/boobooai-termux-diagnostics.json
-pass 'safe diagnostics'
+
+DIAG_DIR="$TARGET/state"
+mkdir -p "$DIAG_DIR"
+python3 -m booboo.diagnostics >"$DIAG_DIR/termux-diagnostics.json"
+pass "safe diagnostics: $DIAG_DIR/termux-diagnostics.json"
 
 if [ -f scripts/final_verify.py ]; then
     python3 scripts/final_verify.py
