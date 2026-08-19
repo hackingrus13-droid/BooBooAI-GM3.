@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from booboo.authorization import decision
 from booboo.kali_registry import OFFICIAL_INDEX
@@ -20,6 +21,14 @@ class CapabilityIntegrationTests(unittest.TestCase):
         self.assertEqual(result["state"], "ADMIN APPROVAL REQUIRED")
         approved = decision("kali_tools", administrator_approved=True)
         self.assertEqual(approved["state"], "AUTHORIZED")
+
+    def test_configured_restriction_overrides_approval(self) -> None:
+        with patch(
+            "booboo.authorization._config",
+            return_value={"permissions": {"kali_tools": "DISABLED"}},
+        ):
+            result = decision("kali_tools", administrator_approved=True)
+        self.assertEqual(result["state"], "DISABLED")
 
     def test_yara_sources_have_provenance(self) -> None:
         self.assertGreaterEqual(len(RULE_SOURCES), 3)
