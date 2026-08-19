@@ -15,17 +15,22 @@ jobs:
           python-version: '3.x'
       - name: Compile Python package and scripts
         run: |
-          python -m compileall -q server.py booboo scripts
+          python -m compileall -q server.py booboo scripts tests
       - name: Validate JSON configuration
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          for path in [Path('config/config.example.json'), Path('config/governed_rules.json'), Path('config/private_rules.local.example.json')]:
+          for path in [
+              Path('config/config.example.json'),
+              Path('config/governed_rules.json'),
+              Path('config/private_rules.local.example.json'),
+              Path('config/rule_sources.json'),
+          ]:
               json.loads(path.read_text(encoding='utf-8'))
               print(f'[VERIFIED] JSON: {path}')
           PY
-      - name: Run governance unit tests
+      - name: Run governance and integration tests
         run: python -m unittest discover -s tests -v
       - name: Run safe diagnostics smoke test
         run: python -m booboo.diagnostics
@@ -39,6 +44,11 @@ jobs:
           test -f config/config.example.json
           test -f config/governed_rules.json
           test -f config/private_rules.local.example.json
+          test -f config/rule_sources.json
           test -f scripts/wake_up.py
           test -f scripts/colab_bootstrap.py
+          test -f scripts/sync_capabilities.py
+          test -f booboo/authorization.py
+          test -f booboo/kali_registry.py
+          test -f booboo/yara_registry.py
           test -f .gitignore
