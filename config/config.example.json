@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "identity": {
     "name": "BooBooAI-GM",
     "title": "Personal Administrator-Governed AI Platform",
@@ -30,6 +30,8 @@
     "plugins": "CONFIRM",
     "models": "ALLOW_LOCAL",
     "security_tools": "CONFIRM",
+    "kali_tools": "CONFIRM",
+    "yara_sources": "CONFIRM",
     "software_installation": "CONFIRM",
     "external_source_import": "CONFIRM"
   },
@@ -68,7 +70,15 @@
   },
   "tools": {
     "registry_path": "state/tool_registry.json",
-    "require_test_before_authorization": true
+    "capability_inventory_path": "state/capability_inventory.json",
+    "require_test_before_authorization": true,
+    "kali_catalog_source": "https://www.kali.org/tools/all-tools/"
+  },
+  "yara": {
+    "source_registry_path": "config/rule_sources.json",
+    "local_source_path": "knowledge/yara_sources",
+    "require_admin_approval_for_rule_execution": true,
+    "provenance_required": true
   },
   "knowledge": {
     "library_path": "knowledge/library",
