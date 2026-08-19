@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
+from booboo.authorization import PRIVILEGED_CAPABILITIES, AuthorizationDenied, decision, require
 from booboo.governance import ALLOWED_STATES, policy_snapshot, system_prompt, validate_state
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,33 @@ class GovernanceTests(unittest.TestCase):
         snapshot = policy_snapshot()
         self.assertEqual(snapshot["private_rule_contents"], "NOT DISPLAYED")
         self.assertIn("system_prompt_sha256", snapshot)
+
+    def test_every_configured_privileged_capability_requires_approval(self) -> None:
+        config = json.loads((ROOT / "config" / "config.example.json").read_text(encoding="utf-8"))
+        permissions = config["permissions"]
+        for capability in PRIVILEGED_CAPABILITIES:
+            self.assertIn(capability, permissions)
+            self.assertEqual(permissions[capability], "CONFIRM")
+            self.assertEqual(decision(capability)["state"], "ADMIN APPROVAL REQUIRED")
+            self.assertEqual(decision(capability, administrator_approved=True)["state"], "AUTHORIZED")
+
+    def test_unknown_capabilities_are_denied(self) -> None:
+        self.assertEqual(decision("not-a-real-capability")["state"], "DENY")
+        with self.assertRaises(AuthorizationDenied):
+            require("not-a-real-capability", administrator_approved=True)
+
+    def test_hard_restriction_overrides_approval(self) -> None:
+        from unittest.mock import patch
+
+        for state in ("DISABLED", "UNAVAILABLE", "READ ONLY", "TEST ONLY", "AUTHORIZED LAB ONLY"):
+            with patch(
+                "booboo.authorization._config",
+                return_value={"permissions": {"terminal": state}},
+            ):
+                self.assertEqual(
+                    decision("terminal", administrator_approved=True)["state"],
+                    state,
+                )
 
 
 if __name__ == "__main__":
