@@ -52,6 +52,8 @@ def http_health() -> dict[str, object]:
 def main() -> int:
     from booboo.diagnostics import run
     from booboo.governance import policy_snapshot
+    from booboo.kali_registry import discover as discover_kali
+    from booboo.yara_registry import registry as yara_registry
 
     report = run()
     report["host"] = {
@@ -62,6 +64,8 @@ def main() -> int:
     report["software"] = [command_check(x) for x in ("python3", "git", "curl")]
     report["browser_service"] = http_health()
     report["governance"] = policy_snapshot()
+    report["kali"] = discover_kali()
+    report["yara"] = yara_registry(ROOT / "knowledge" / "yara_sources")
     report["overall_state"] = "PARTIALLY VERIFIED"
 
     print(json.dumps(report, indent=2))
