@@ -29,6 +29,7 @@ PRIVILEGED_CAPABILITIES = frozenset({
     "external_source_import",
     "kali_tools",
     "yara_sources",
+    "model_merging",
 })
 
 HARD_RESTRICTIONS = frozenset({
@@ -72,7 +73,6 @@ def decision(capability: str, *, administrator_approved: bool = False) -> dict[s
         elif normalized in {"ALLOW", "ALLOW_LOCAL", "AUTHORIZED"}:
             state = "AUTHORIZED"
         elif requires:
-            # Privileged capabilities must not fall through to implicit access.
             state = "AUTHORIZED" if administrator_approved else "ADMIN APPROVAL REQUIRED"
         else:
             state = "DENY"
