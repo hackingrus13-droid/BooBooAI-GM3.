@@ -43,6 +43,25 @@ MODEL_SHA256 = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
 MODEL_NAME = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_sha256(path: Path, expected_sha256: str) -> None:
+    if not path.is_file():
+        raise RuntimeError(f"Expected artifact is missing: {path}")
+    actual = sha256_file(path)
+    if actual.lower() != expected_sha256.lower():
+        raise RuntimeError(
+            f"SHA-256 mismatch for {path}: expected {expected_sha256}, got {actual}"
+        )
+    print(f"[BOOTSTRAP] VERIFIED SHA-256: {path}")
+
+
 def download(url: str, target: Path, expected_sha256: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".part")
@@ -62,10 +81,7 @@ def download(url: str, target: Path, expected_sha256: str) -> None:
             if total:
                 print(f"\r[BOOTSTRAP] {done / total * 100:6.1f}%", end="", flush=True)
     print()
-    digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
-    if digest.lower() != expected_sha256.lower():
-        tmp.unlink(missing_ok=True)
-        raise RuntimeError(f"SHA-256 mismatch: expected {expected_sha256}, got {digest}")
+    verify_sha256(tmp, expected_sha256)
     tmp.replace(target)
     print(f"[BOOTSTRAP] VERIFIED SHA-256: {target}")
 
@@ -110,6 +126,7 @@ def install_fallback_model() -> Path:
     MODELS.mkdir(parents=True, exist_ok=True)
     target = MODELS / MODEL_NAME
     if target.is_file() and target.stat().st_size > 100_000_000:
+        verify_sha256(target, MODEL_SHA256)
         return target
     free = shutil.disk_usage(ROOT).free
     required = 1_400_000_000
