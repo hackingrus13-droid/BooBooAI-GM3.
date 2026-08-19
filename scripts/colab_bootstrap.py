@@ -1,7 +1,7 @@
 """Google Colab bootstrap for BooBooAI-GM3.
 
-This script is intentionally a development/verification bootstrap. Free managed
-Colab runtimes are ephemeral and are not treated as guaranteed web hosting.
+This script is a development/verification bootstrap. Free managed Colab
+runtimes are ephemeral and are not treated as guaranteed web hosting.
 """
 from __future__ import annotations
 
@@ -41,6 +41,8 @@ def main() -> None:
     sys.path.insert(0, str(ROOT))
     from booboo.governance import policy_snapshot
     from booboo.diagnostics import run
+    from booboo.kali_registry import discover as discover_kali
+    from booboo.yara_registry import registry as yara_registry
 
     report = run()
     report["environment"] = {
@@ -50,11 +52,14 @@ def main() -> None:
         "commands": [command_version(x) for x in ("git", "python", "python3")],
     }
     report["governance"] = policy_snapshot()
+    report["kali_capability_catalog"] = discover_kali()
+    report["yara_registry"] = yara_registry(ROOT / "knowledge" / "yara_sources")
     report["colab_policy"] = {
         "mode": "DEVELOPMENT_AND_VERIFICATION",
         "free_managed_runtime": True,
         "persistent_web_hosting_claim": False,
-        "note": "Use Termux/local hardware for the persistent localhost browser service."
+        "shared_project_contract": True,
+        "note": "Colab shares BooBooAI-GM code and verification contracts with local/Termux deployments, while reporting its own runtime capabilities independently.",
     }
 
     state = ROOT / "state"
