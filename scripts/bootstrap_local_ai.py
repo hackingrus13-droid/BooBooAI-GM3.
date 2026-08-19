@@ -16,6 +16,7 @@ import hashlib
 import os
 import platform
 import shutil
+import sys
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -23,6 +24,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime" / "llama.cpp"
 MODELS = ROOT / "models"
+
+# Direct execution as `python3 scripts/bootstrap_local_ai.py` places `scripts/`
+# on sys.path, not the repository root. Add the verified project root explicitly
+# so the canonical `booboo` package is resolved without requiring cwd/PYTHONPATH.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from booboo.authorization import require
 
