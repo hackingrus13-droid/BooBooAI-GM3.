@@ -6,15 +6,27 @@ on:
   pull_request:
 
 jobs:
-  python-syntax:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Compile Python package
-        run: python -m compileall -q server.py booboo
+      - name: Compile Python package and scripts
+        run: |
+          python -m compileall -q server.py booboo scripts
+      - name: Validate JSON configuration
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in [Path('config/config.example.json'), Path('config/governed_rules.json'), Path('config/private_rules.local.example.json')]:
+              json.loads(path.read_text(encoding='utf-8'))
+              print(f'[VERIFIED] JSON: {path}')
+          PY
+      - name: Run governance unit tests
+        run: python -m unittest discover -s tests -v
       - name: Run safe diagnostics smoke test
         run: python -m booboo.diagnostics
       - name: Verify required project files
@@ -25,5 +37,8 @@ jobs:
           test -f ARCHITECTURE.md
           test -f favicon.svg
           test -f config/config.example.json
+          test -f config/governed_rules.json
           test -f config/private_rules.local.example.json
+          test -f scripts/wake_up.py
+          test -f scripts/colab_bootstrap.py
           test -f .gitignore
