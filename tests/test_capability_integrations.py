@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from booboo.authorization import decision
+from booboo.authorization import AuthorizationDenied, decision
 from booboo.kali_registry import OFFICIAL_INDEX
-from booboo.yara_registry import RULE_SOURCES, registry
+from booboo.yara_registry import RULE_SOURCES, clone_sources, registry
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,6 +42,11 @@ class CapabilityIntegrationTests(unittest.TestCase):
         report = registry(ROOT / "knowledge" / "yara_sources")
         self.assertTrue(report["provenance_required"])
         self.assertEqual(report["execution_policy"], "ADMIN_APPROVAL_REQUIRED")
+
+    def test_external_rule_import_requires_admin_approval(self) -> None:
+        with TemporaryDirectory() as temp:
+            with self.assertRaises(AuthorizationDenied):
+                clone_sources(Path(temp), administrator_approved=False)
 
     def test_rule_sources_json_is_valid(self) -> None:
         data = json.loads((ROOT / "config" / "rule_sources.json").read_text(encoding="utf-8"))
