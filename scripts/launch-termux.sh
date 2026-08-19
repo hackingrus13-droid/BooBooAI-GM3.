@@ -6,6 +6,11 @@ cd "$ROOT"
 
 say() { printf '\n[BOOBOO] %s\n' "$*"; }
 
+if [[ "${BOOBOO_ADMIN_APPROVED:-0}" != "1" ]]; then
+  say "ADMIN APPROVAL REQUIRED: export BOOBOO_ADMIN_APPROVED=1 and rerun."
+  exit 77
+fi
+
 # Install only the small, standard Termux prerequisites that this launcher
 # itself requires. Model runtimes remain optional and are never fabricated.
 if command -v pkg >/dev/null 2>&1; then
@@ -34,9 +39,6 @@ export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 say "Running BooBoo Wake Up verification"
 python3 scripts/wake_up.py
 
-# If a compatible llama-server executable and a real GGUF model already exist,
-# start the local model server automatically. No model is downloaded or
-# invented by this script.
 MODEL="${BOOBOO_MODEL:-}"
 if [[ -z "$MODEL" ]]; then
   for candidate in \
@@ -76,4 +78,4 @@ if command -v termux-open-url >/dev/null 2>&1; then
   termux-open-url "http://127.0.0.1:8080/" >/dev/null 2>&1 || true
 fi
 
-exec python3 server.py
+exec env BOOBOO_ADMIN_APPROVED=1 python3 server.py
