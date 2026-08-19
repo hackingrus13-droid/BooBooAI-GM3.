@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BooBooAI-GM verified startup entry point."""
+"""BooBooAI-GM evidence-based startup verification entry point."""
 from __future__ import annotations
 
 import json
@@ -39,6 +39,20 @@ def command_check(name: str, args: list[str] | None = None) -> dict[str, object]
         return {"state": "FAILED", "command": name, "error": str(exc)}
 
 
+def endpoint_check(url: str = "http://127.0.0.1:8081/v1/models") -> dict[str, object]:
+    try:
+        with urllib.request.urlopen(url, timeout=3) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        models = [
+            item.get("id")
+            for item in data.get("data", [])
+            if isinstance(item, dict) and item.get("id")
+        ]
+        return {"state": "VERIFIED", "url": url, "models": models}
+    except Exception as exc:
+        return {"state": "UNVERIFIED", "url": url, "models": [], "error": str(exc)}
+
+
 def http_health() -> dict[str, object]:
     url = "http://127.0.0.1:8080/api/health"
     try:
@@ -62,11 +76,15 @@ def main() -> int:
         "python": sys.version,
     }
     report["software"] = [command_check(x) for x in ("python3", "git", "curl")]
+    report["model_endpoint"] = endpoint_check()
     report["browser_service"] = http_health()
     report["governance"] = policy_snapshot()
     report["kali"] = discover_kali()
     report["yara"] = yara_registry(ROOT / "knowledge" / "yara_sources")
-    report["overall_state"] = "PARTIALLY VERIFIED"
+
+    model_state = report["model_endpoint"]["state"]
+    required = [report["software"][0]["state"], model_state]
+    report["overall_state"] = "VERIFIED" if all(x == "VERIFIED" for x in required) else "PARTIALLY VERIFIED"
 
     print(json.dumps(report, indent=2))
     return 0
