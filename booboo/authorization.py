@@ -9,6 +9,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config" / "config.json"
+EXAMPLE_CONFIG = ROOT / "config" / "config.example.json"
 AUDIT = ROOT / "state" / "governance_audit.jsonl"
 
 
@@ -41,10 +42,15 @@ HARD_RESTRICTIONS = frozenset({
 
 
 def _config() -> dict[str, Any]:
-    try:
-        return json.loads(CONFIG.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    # Clean repository checkouts intentionally do not contain config/config.json.
+    # Use the committed example as the safe baseline until the administrator
+    # creates the local configuration.
+    for path in (CONFIG, EXAMPLE_CONFIG):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return {}
 
 
 def decision(capability: str, *, administrator_approved: bool = False) -> dict[str, Any]:
@@ -71,10 +77,14 @@ def decision(capability: str, *, administrator_approved: bool = False) -> dict[s
         else:
             state = "DENY"
 
+    confirmation_required = requires or (
+        configured is not None
+        and str(configured).upper() in {"CONFIRM", "ADMIN APPROVAL REQUIRED"}
+    )
     return {
         "capability": capability,
         "state": state,
-        "administrator_confirmation_required": requires or str(configured).upper() in {"CONFIRM", "ADMIN APPROVAL REQUIRED"} if configured is not None else requires,
+        "administrator_confirmation_required": confirmation_required,
         "administrator_approved": administrator_approved,
         "configured_security_policy": configured,
     }
