@@ -6,6 +6,7 @@ from typing import Any
 
 from .capabilities import discover, save_registry
 from .config import load_config, privacy_mode
+from .governance import policy_snapshot
 from .services import default_services, summarize
 
 
@@ -19,6 +20,7 @@ BOOT_STAGES = [
     "NETWORK CHECK",
     "KNOWLEDGE CHECK",
     "PERMISSION CHECK",
+    "GOVERNANCE CHECK",
     "TEST",
     "REPORT",
     "READY",
@@ -29,11 +31,14 @@ def run(config_path: Path | None = None) -> dict[str, Any]:
     """Run safe startup diagnostics without executing registered tools."""
     config = load_config(config_path)
     registry = discover()
-    state_path = Path(__file__).resolve().parents[1] / "state" / "tool_registry.json"
+    root = Path(__file__).resolve().parents[1]
+    state_path = root / "state" / "tool_registry.json"
     save_registry(state_path, registry)
 
     model_providers = config.get("models", {}).get("providers", [])
-    knowledge_path = Path(config.get("knowledge", {}).get("library_path", "knowledge/library"))
+    knowledge_path = root / config.get("knowledge", {}).get("library_path", "knowledge/library")
+    governance = policy_snapshot()
+
     return {
         "boot_stages": BOOT_STAGES,
         "privacy": {
@@ -53,9 +58,13 @@ def run(config_path: Path | None = None) -> dict[str, Any]:
             "exists": knowledge_path.exists(),
             "state": "UNVERIFIED" if not knowledge_path.exists() else "DETECTED_NOT_INDEXED",
         },
+        "governance": governance,
         "services": summarize(default_services()),
-        "private_rules": "LOCAL_ONLY_NOT_INSPECTED",
-        "overall_state": "UNVERIFIED",
+        "private_rules": {
+            "present": governance["private_rules_present"],
+            "contents": "NOT DISPLAYED",
+        },
+        "overall_state": "PARTIALLY VERIFIED",
     }
 
 
