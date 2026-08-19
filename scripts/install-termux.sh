@@ -120,7 +120,10 @@ pass "source synchronized with origin/$BRANCH"
 for f in server.py index.html config/config.example.json config/governed_rules.json scripts/wake_up.py scripts/launch-final-termux.sh; do
     [ -f "$f" ] || fail "required project file missing: $f"
 done
-chmod +x scripts/*.sh scripts/*.py 2>/dev/null || true
+
+bash -n scripts/install-termux.sh || fail 'Termux installer syntax validation failed.'
+bash -n scripts/launch-final-termux.sh || fail 'Termux launcher syntax validation failed.'
+pass 'Termux shell scripts syntax verified without changing tracked file modes'
 
 python3 -m compileall -q server.py booboo scripts tests
 pass 'Python compilation'
