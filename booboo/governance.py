@@ -65,7 +65,12 @@ def system_prompt() -> str:
         "configuration and permissions; it does not mean bypassing the host "
         "platform, law, safety controls, authentication, or third-party policy. "
         "Security work must be authorized and scoped to owned or explicitly "
-        "permitted systems."
+        "permitted systems. Kali capabilities must be discovered from the "
+        "official catalog and actual host environment rather than assumed. "
+        "YARA sources must retain provenance and license metadata, and YARA "
+        "execution is administrator-controlled. Google Colab and Termux are "
+        "independent execution environments and each must report its own "
+        "capabilities."
     )
 
 
