@@ -4,9 +4,14 @@
 The bootstrap is deliberately evidence-based: downloads are from explicitly
 recorded upstream URLs, SHA-256 hashes are checked, and nothing is reported
 as operational until the resulting /v1/models endpoint responds.
+
+Because this operation installs executable software and model artifacts, it is
+an administrator-controlled capability. It requires explicit approval via
+--admin-approve or BOOBOO_ADMIN_APPROVED=1.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import platform
@@ -18,6 +23,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime" / "llama.cpp"
 MODELS = ROOT / "models"
+
+from booboo.authorization import require
 
 # Official llama.cpp Android arm64 release verified against the upstream release page.
 LLAMA_VERSION = "b10218"
@@ -136,12 +143,20 @@ def is_supported_target() -> bool:
     prefix = os.environ.get("PREFIX", "")
     termux = prefix.startswith("/data/data/com.termux")
     system = platform.system().lower()
-    # Termux/Python can identify Android as "Android" while the binaries are
-    # Linux/ELF. Treat a genuine Termux arm64 environment as supported.
     return machine in {"aarch64", "arm64"} and (system in {"linux", "android"} or termux)
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Administrator-controlled BooBooAI local AI bootstrap")
+    parser.add_argument(
+        "--admin-approve",
+        action="store_true",
+        help="explicitly authorize software/model installation for this invocation",
+    )
+    args = parser.parse_args()
+    approved = args.admin_approve or os.environ.get("BOOBOO_ADMIN_APPROVED") == "1"
+    require("software_installation", administrator_approved=approved)
+
     if not is_supported_target():
         print(
             "[BOOTSTRAP] SKIPPED: supported target is Android/Termux arm64 "
