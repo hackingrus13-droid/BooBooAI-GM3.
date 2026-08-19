@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""BooBooAI-GM3 local orchestration server.
-
-Standard-library-only local HTTP server. It preserves the existing
-ULTRAPLINIAN frontend contract while adding governed behavior, health,
-capability, and model-discovery endpoints.
-"""
 from __future__ import annotations
 
 import json
@@ -57,7 +50,6 @@ def safe_name(value: str) -> str:
 
 
 def candidate_score(text: str, latency_ms: float) -> float:
-    """Transparent baseline score; not a semantic-quality claim."""
     text = text.strip()
     if not text:
         return 0.0
@@ -98,7 +90,7 @@ def probe_endpoint(endpoint: dict[str, str]) -> dict[str, Any]:
         return {
             "name": safe_name(endpoint["name"]),
             "url": endpoint["url"],
-            "reachable": True,
+            "reachable": bool(models),
             "models": models,
             "latency_ms": round((time.perf_counter() - started) * 1000, 1),
         }
@@ -118,15 +110,24 @@ def model_status() -> list[dict[str, Any]]:
 
 
 def call_model(endpoint: dict[str, str], messages: list[dict[str, str]]) -> dict[str, Any]:
+    """Call the endpoint using its actual loaded model id when available."""
+    model_id = endpoint["name"]
+    try:
+        status = probe_endpoint(endpoint)
+        if status["models"]:
+            model_id = str(status["models"][0])
+    except Exception:
+        pass
+
     request = urllib.request.Request(
         endpoint["url"] + "/chat/completions",
         data=json_bytes({
-            "model": endpoint["name"],
+            "model": model_id,
             "messages": messages,
             "stream": False,
             "temperature": float(os.getenv("MODEL_TEMPERATURE", "0.2")),
         }),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
         method="POST",
     )
     started = time.perf_counter()
@@ -136,7 +137,7 @@ def call_model(endpoint: dict[str, str], messages: list[dict[str, str]]) -> dict
         latency_ms = (time.perf_counter() - started) * 1000
         text = extract_text(data)
         return {
-            "model": safe_name(endpoint["name"]),
+            "model": safe_name(model_id),
             "success": bool(text.strip()),
             "content": text,
             "score": candidate_score(text, latency_ms),
@@ -145,7 +146,7 @@ def call_model(endpoint: dict[str, str], messages: list[dict[str, str]]) -> dict
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         latency_ms = (time.perf_counter() - started) * 1000
         return {
-            "model": safe_name(endpoint["name"]),
+            "model": safe_name(model_id),
             "success": False,
             "content": "",
             "score": 0,
@@ -155,7 +156,7 @@ def call_model(endpoint: dict[str, str], messages: list[dict[str, str]]) -> dict
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "BooBooAI-GM3/1.1"
+    server_version = "BooBooAI-GM3/1.2"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"[{self.log_date_time_string()}] {fmt % args}")
@@ -171,46 +172,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
-
-        if path == "/v1/info":
+        if path == "/api/health":
             statuses = model_status()
             reachable = sum(1 for item in statuses if item["reachable"])
             self.send_json(200, {
-                "name": "BooBooAI-GM3",
-                "engine": "ULTRAPLINIAN",
-                "version": "1.1.0",
-                "backend": "local-orchestrator",
-                "configured_model_endpoints": len(ENDPOINTS),
-                "reachable_model_endpoints": reachable,
-                "tiers": TIER_LIMITS,
-                "features": [
-                    "parallel-racing",
-                    "transparent-baseline-scoring",
-                    "sse",
-                    "local-openai-compatible-models",
-                    "governed-behavior",
-                    "verified-capability-reporting",
-                ],
-            })
-            return
-
-        if path == "/api/health":
-            statuses = model_status()
-            self.send_json(200, {
                 "success": True,
-                "state": "RUNNING",
+                "state": "READY" if reachable else "RUNNING_NO_VERIFIED_MODEL",
                 "service": "browser_interface",
                 "server": "BooBooAI-GM3",
                 "model_endpoints_configured": len(ENDPOINTS),
-                "model_endpoints_reachable": sum(1 for item in statuses if item["reachable"]),
+                "model_endpoints_reachable": reachable,
             })
             return
 
         if path == "/api/governance":
-            self.send_json(200, {
-                "success": True,
-                "governance": policy_snapshot(),
-            })
+            self.send_json(200, {"success": True, "governance": policy_snapshot()})
             return
 
         if path == "/api/models":
@@ -225,27 +201,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/diagnostics":
             statuses = model_status()
+            reachable = sum(1 for item in statuses if item["reachable"])
             report = {
                 "system": "BooBooAI-GM3",
                 "state": "VERIFIED",
-                "server": {
-                    "host": HOST,
-                    "port": PORT,
-                    "browser": f"http://{HOST}:{PORT}/",
-                },
+                "server": {"host": HOST, "port": PORT, "browser": f"http://{HOST}:{PORT}/"},
                 "governance": policy_snapshot(),
-                "models": {
-                    "configured": len(ENDPOINTS),
-                    "reachable": sum(1 for item in statuses if item["reachable"]),
-                    "providers": statuses,
-                },
-                "knowledge": {
-                    "library_exists": (ROOT / "knowledge" / "library").exists(),
-                    "state": "DETECTED_NOT_INDEXED",
-                },
-                "overall_state": "PARTIALLY VERIFIED" if not any(item["reachable"] for item in statuses) else "VERIFIED",
+                "models": {"configured": len(ENDPOINTS), "reachable": reachable, "providers": statuses},
+                "knowledge": {"library_exists": (ROOT / "knowledge" / "library").exists(), "state": "DETECTED_NOT_INDEXED"},
+                "overall_state": "VERIFIED" if reachable else "PARTIALLY VERIFIED",
             }
-            audit("diagnostics_requested", {"reachable_models": report["models"]["reachable"]})
+            audit("diagnostics_requested", {"reachable_models": reachable})
             self.send_json(200, report)
             return
 
@@ -326,45 +292,35 @@ class Handler(BaseHTTPRequestHandler):
                 break
             responded += 1
             self.wfile.write(sse("race:model", {
-                "model": result["model"],
-                "success": result["success"],
-                "score": result["score"],
-                "models_responded": responded,
-                "models_total": len(selected),
+                "model": result["model"], "success": result["success"], "score": result["score"],
+                "models_responded": responded, "models_total": len(selected),
             }))
             self.wfile.flush()
 
         successful = [r for r in results if r["success"]]
         if not successful:
-            audit("model_race_failed", {"models_queried": len(selected)})
-            self.wfile.write(sse("race:error", {"error": "all configured model endpoints failed", "state": "FAILED"}))
+            errors = [r.get("error", "no response") for r in results]
+            audit("model_race_failed", {"models_queried": len(selected), "errors": errors[:5]})
+            self.wfile.write(sse("race:error", {
+                "error": "No configured model endpoint returned a usable response.",
+                "state": "FAILED",
+                "detail": errors[:5],
+                "next_action": "Start or configure a verified OpenAI-compatible local model endpoint at http://127.0.0.1:8081/v1.",
+            }))
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
             return
 
         successful.sort(key=lambda r: (-r["score"], r["duration_ms"], r["model"]))
         winner = successful[0]
-        self.wfile.write(sse("race:leader", {
-            "model": winner["model"],
-            "score": winner["score"],
-            "content": winner["content"],
-        }))
+        self.wfile.write(sse("race:leader", {"model": winner["model"], "score": winner["score"], "content": winner["content"]}))
         self.wfile.flush()
         rankings = sorted(results, key=lambda r: (-r["score"], r["duration_ms"], r["model"]))
         audit("model_race_completed", {"winner": winner["model"], "models_responded": responded})
         self.wfile.write(sse("race:complete", {
             "response": winner["content"],
-            "winner": {
-                "model": winner["model"],
-                "score": winner["score"],
-                "duration_ms": winner["duration_ms"],
-            },
-            "race": {
-                "rankings": [
-                    {"model": r["model"], "score": r["score"], "success": r["success"]}
-                    for r in rankings
-                ]
-            },
+            "winner": {"model": winner["model"], "score": winner["score"], "duration_ms": winner["duration_ms"]},
+            "race": {"rankings": [{"model": r["model"], "score": r["score"], "success": r["success"]} for r in rankings]},
         }))
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
