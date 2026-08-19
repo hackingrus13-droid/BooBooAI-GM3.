@@ -20,12 +20,15 @@ chmod +x scripts/launch-termux.sh
 
 ## Launch
 
-Run:
+BooBooAI-GM startup is administrator-controlled. Explicitly approve the launch for that invocation:
 
 ```bash
 cd ~/BooBooAI-GM3.
+export BOOBOO_ADMIN_APPROVED=1
 ./scripts/launch-termux.sh
 ```
+
+Without `BOOBOO_ADMIN_APPROVED=1`, the launcher exits with `ADMIN APPROVAL REQUIRED` and does not start the browser service or local model server.
 
 The launcher:
 
@@ -38,7 +41,7 @@ The launcher:
 7. starts the browser service on `127.0.0.1:8080`;
 8. opens the browser automatically when `termux-open-url` is available.
 
-No model is invented, silently downloaded, or marked operational without a runtime response.
+The local AI bootstrap additionally requires explicit administrator authorization for software/model installation. No model is invented or marked operational without a runtime response.
 
 ## Model setup
 
@@ -51,11 +54,12 @@ http://127.0.0.1:8081/v1
 A common local runtime is `llama-server`. The launcher accepts an explicit model path:
 
 ```bash
+export BOOBOO_ADMIN_APPROVED=1
 export BOOBOO_MODEL="$HOME/models/your-model.gguf"
 ./scripts/launch-termux.sh
 ```
 
-If the model endpoint is already provided by another runtime, start that runtime separately and then launch BooBooAI-GM.
+If the model endpoint is already provided by another runtime, that runtime remains a separate host capability and must itself be authorized by the host/platform administrator before use.
 
 ## Browser
 
@@ -92,6 +96,7 @@ python3 scripts/sync_capabilities.py
 pwd                         # show current directory
 ls -la                      # list files
 cd ~/BooBooAI-GM3.          # enter project
+export BOOBOO_ADMIN_APPROVED=1
 ./scripts/launch-termux.sh  # start BooBooAI-GM
 curl http://127.0.0.1:8080/api/health
 curl http://127.0.0.1:8081/v1/models
@@ -124,7 +129,7 @@ The model itself determines natural-language understanding. BooBooAI-GM does not
 
 ## Security and authorization
 
-Security tools are discovered separately from execution. Administrator approval, configured restrictions, laboratory boundaries, and audit requirements remain enforced. An administrator approval flag cannot override a configured `DISABLED`, `UNAVAILABLE`, `READ ONLY`, `TEST ONLY`, or `AUTHORIZED LAB ONLY` state.
+Security tools are discovered separately from execution. Administrator approval, configured restrictions, laboratory boundaries, and audit requirements remain enforced. Every privileged project entry point now checks the shared authorization gate before execution. Unknown capabilities default to `DENY`. An administrator approval flag cannot override a configured `DISABLED`, `UNAVAILABLE`, `READ ONLY`, `TEST ONLY`, or `AUTHORIZED LAB ONLY` state.
 
 ## Network/deep research
 
