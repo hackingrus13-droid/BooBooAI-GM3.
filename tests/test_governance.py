@@ -71,6 +71,20 @@ class GovernanceTests(unittest.TestCase):
                     state,
                 )
 
+    def test_privileged_project_entrypoints_have_explicit_admin_guards(self) -> None:
+        guarded_files = {
+            "server.py": ("require(\"servers\"", "BOOBOO_ADMIN_APPROVED"),
+            "scripts/bootstrap_local_ai.py": ("require(\"software_installation\"", "--admin-approve"),
+            "scripts/launch-termux.sh": ("BOOBOO_ADMIN_APPROVED", "ADMIN APPROVAL REQUIRED"),
+            "scripts/launch-final-termux.sh": ("BOOBOO_ADMIN_APPROVED", "ADMIN APPROVAL REQUIRED"),
+            "scripts/launch-linux.sh": ("BOOBOO_ADMIN_APPROVED", "ADMIN APPROVAL REQUIRED"),
+            "scripts/launch-windows.ps1": ("BOOBOO_ADMIN_APPROVED", "ADMIN APPROVAL REQUIRED"),
+        }
+        for relative, markers in guarded_files.items():
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            for marker in markers:
+                self.assertIn(marker, text, f"missing governance guard {marker!r} in {relative}")
+
 
 if __name__ == "__main__":
     unittest.main()
