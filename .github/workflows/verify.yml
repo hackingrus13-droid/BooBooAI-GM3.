@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -22,9 +24,15 @@ jobs:
           from booboo.authorization import decision
           from booboo.kali_registry import discover
           from booboo.yara_registry import registry
+          from booboo.mergekit import PINNED_REVISION, SOURCE, status
           assert decision('kali_tools')['state'] == 'ADMIN APPROVAL REQUIRED'
           assert discover()['execution_policy'] == 'ADMIN_APPROVAL_REQUIRED'
           assert registry()['execution_policy'] == 'ADMIN_APPROVAL_REQUIRED'
+          report = status()
+          assert report['optional'] is True
+          assert report['pinned_revision'] == PINNED_REVISION
+          assert SOURCE == 'https://github.com/arcee-ai/mergekit.git'
+          assert decision('model_merging')['state'] == 'ADMIN APPROVAL REQUIRED'
           print('[VERIFIED] Integration modules imported and authorization defaults checked')
           PY
       - name: Validate JSON configuration
@@ -38,8 +46,13 @@ jobs:
               Path('config/private_rules.local.example.json'),
               Path('config/rule_sources.json'),
           ]:
-              json.loads(path.read_text(encoding='utf-8'))
+              data = json.loads(path.read_text(encoding='utf-8'))
               print(f'[VERIFIED] JSON: {path}')
+          config = json.loads(Path('config/config.example.json').read_text(encoding='utf-8'))
+          assert config['permissions']['model_merging'] == 'CONFIRM'
+          assert config['tools']['mergekit']['required_for_startup'] is False
+          assert config['tools']['mergekit']['administrator_approval_required'] is True
+          print('[VERIFIED] MergeKit remains optional and administrator-gated')
           PY
       - name: Run governance and integration tests
         run: python -m unittest discover -s tests -v
@@ -59,7 +72,10 @@ jobs:
           test -f scripts/wake_up.py
           test -f scripts/colab_bootstrap.py
           test -f scripts/sync_capabilities.py
+          test -f scripts/final_verify.py
           test -f booboo/authorization.py
           test -f booboo/kali_registry.py
           test -f booboo/yara_registry.py
+          test -f booboo/mergekit.py
+          test -f tests/test_mergekit.py
           test -f .gitignore
