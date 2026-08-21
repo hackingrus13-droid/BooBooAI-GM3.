@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Administrator authorization gate for privileged BooBooAI-GM actions."""
 
+import copy
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,16 +43,38 @@ HARD_RESTRICTIONS = frozenset({
 })
 
 
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Merge local configuration over the committed safe baseline.
+
+    Missing keys in an older local config inherit newly introduced defaults
+    from config.example.json. Existing local values remain authoritative.
+    """
+    result = copy.deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _config() -> dict[str, Any]:
-    # Clean repository checkouts intentionally do not contain config/config.json.
-    # Use the committed example as the safe baseline until the administrator
-    # creates the local configuration.
-    for path in (CONFIG, EXAMPLE_CONFIG):
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-    return {}
+    # The committed example is the safe baseline. A local config may override
+    # it, but an older local config must not silently remove newly introduced
+    # governance capabilities. This keeps upgrades additive and fail-closed.
+    baseline = _load_json(EXAMPLE_CONFIG)
+    local = _load_json(CONFIG)
+    if baseline:
+        return _deep_merge(baseline, local)
+    return local
 
 
 def decision(capability: str, *, administrator_approved: bool = False) -> dict[str, Any]:
